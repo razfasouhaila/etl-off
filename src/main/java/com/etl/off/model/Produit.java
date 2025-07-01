@@ -7,6 +7,7 @@ import java.util.Set;
 
 @Data
 @Entity
+@Table(name = "produits")
 public class Produit {
 
     @Id
@@ -14,7 +15,7 @@ public class Produit {
     private Long id;
 
     private String nom;
-    private String scoreNutritionnel;
+    private String nutritionScore;  // nom aligné avec CSV et service
     private Double energie_100g;
     private Double graisse_100g;
     private Double sucre_100g;
@@ -42,19 +43,34 @@ public class Produit {
     private String texteIngredients;
 
     @ManyToOne
-    @JoinColumn(name = "categorie_id") // clé étrangère vers la table Categorie
+    @JoinColumn(name = "categorie_id")
     private Categorie categorie;
 
     @ManyToOne
-    @JoinColumn(name = "marque_id") // clé étrangère vers la table Marque
+    @JoinColumn(name = "marque_id")
     private Marque marque;
 
     @ManyToMany
+    @JoinTable(
+        name = "produit_ingredients",
+        joinColumns = @JoinColumn(name = "produit_id"),
+        inverseJoinColumns = @JoinColumn(name = "ingredient_id")
+    )
     private Set<Ingredient> ingredients;
 
     @ManyToMany
+    @JoinTable(
+        name = "produit_additifs",
+        joinColumns = @JoinColumn(name = "produit_id"),
+        inverseJoinColumns = @JoinColumn(name = "additif_id")
+    )
     private Set<Additif> additifs;
 
     @ManyToMany
+    @JoinTable(
+        name = "produit_allergenes",
+        joinColumns = @JoinColumn(name = "produit_id"),
+        inverseJoinColumns = @JoinColumn(name = "allergene_id")
+    )
     private Set<Allergen> allergenes;
 }
