@@ -114,6 +114,24 @@ public class ProductETLService {
                         }
                         produit.setAllergenes(allergenSet);
                     }
+                    // Nettoyage et insertion des ingrédients
+String ingredientsStr = get(columns, headerIndex, "ingredients");
+if (ingredientsStr != null && !ingredientsStr.isBlank()) {
+    String[] ingredients = ingredientsStr.split("[,;\\-]");
+    Set<Ingredient> ingredientSet = new HashSet<>();
+    for (String ing : ingredients) {
+        String nomIngredient = clean(ing);
+        if (!nomIngredient.isEmpty() && nomIngredient.length() > 1) {
+            Ingredient ingredient = ingredientRepository.findByNom(nomIngredient).orElseGet(() -> {
+                Ingredient newIng = new Ingredient();
+                newIng.setNom(nomIngredient);
+                return ingredientRepository.save(newIng);
+            });
+            ingredientSet.add(ingredient);
+        }
+    }
+    produit.setIngredients(ingredientSet);
+}
 
                     // Nettoyage et insertion des additifs
                     String additifsStr = get(columns, headerIndex, "additifs");
