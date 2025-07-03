@@ -96,25 +96,43 @@ public class ProductETLService {
                     produit.setContientHuilePalme("1".equals(get(columns, headerIndex, "presenceHuilePalme")));
                     produit.setTexteIngredients(get(columns, headerIndex, "ingredients"));
 
-                    // INGREDIENTS
-                    String ingredientsStr = get(columns, headerIndex, "ingredients");
-                    if (ingredientsStr != null && !ingredientsStr.isBlank()) {
-                        String[] ingredients = ingredientsStr.split("[,;]");
-                        Set<Ingredient> ingredientSet = new HashSet<>();
-                        for (String ing : ingredients) {
-                            String nomIngredient = clean(ing);
-                            if (!nomIngredient.isEmpty()) {
-                                Ingredient ingredient = ingredientRepository.findByNom(nomIngredient).orElseGet(() -> {
-                                    Ingredient newIng = new Ingredient();
-                                    newIng.setNom(nomIngredient);
-                                    return ingredientRepository.save(newIng);
+                    // Traitement des allergènes avec nettoyage
+                    String allergenesStr = get(columns, headerIndex, "allergenes");
+                    if (allergenesStr != null && !allergenesStr.isBlank()) {
+                        String[] allergenes = allergenesStr.split("[,;\\-]");
+                        Set<Allergen> allergenSet = new HashSet<>();
+                        for (String a : allergenes) {
+                            String nomAllergen = clean(a);
+                            if (!nomAllergen.isEmpty()) {
+                                Allergen allergen = allergenRepository.findByNom(nomAllergen).orElseGet(() -> {
+                                    Allergen newAllergen = new Allergen();
+                                    newAllergen.setNom(nomAllergen);
+                                    return allergenRepository.save(newAllergen);
                                 });
-                                ingredientSet.add(ingredient);
+                                allergenSet.add(allergen);
                             }
                         }
-                        produit.setIngredients(ingredientSet);
+                        produit.setAllergenes(allergenSet);
                     }
 
+                    // Nettoyage et insertion des additifs
+                    String additifsStr = get(columns, headerIndex, "additifs");
+                    if (additifsStr != null && !additifsStr.isBlank()) {
+                        String[] additifs = additifsStr.split("[,;\\-]");
+                        Set<Additif> additifsSet = new HashSet<>();
+                        for (String ad : additifs) {
+                            String nomAdditif = clean(ad);
+                            if (!nomAdditif.isEmpty() && nomAdditif.length() > 1) {
+                                Additif additif = additifRepository.findByNom(nomAdditif).orElseGet(() -> {
+                                    Additif newAdditif = new Additif();
+                                    newAdditif.setNom(nomAdditif);
+                                    return additifRepository.save(newAdditif);
+                                });
+                                additifsSet.add(additif);
+                            }
+                        }
+                        produit.setAdditifs(additifsSet);
+                    }
 
                     produitRepository.save(produit);
                     successCount++;
@@ -149,15 +167,13 @@ public class ProductETLService {
 
     private String clean(String input) {
         if (input == null) return "";
-
-        input = input.trim().toLowerCase().replaceAll("\\s+", " ");       // espaces et minuscule
-        input = input.replaceAll("\\(.*?\\)", "");                        // parenthèses
-        input = input.replaceAll("\\d+%?", "");                           // pourcentages et chiffres
-        input = input.replaceAll("[*_]", "");                             // caractères spéciaux
-        input = input.replaceAll("\\bfr\\b|\\bvoir\\b.*", "");            // mots parasites
-        input = input.replaceAll("[^a-zàâäéèêëîïôöùûüç ,\\-']", "");        // nettoyage global
-        input = input.replaceAll("^[,;\\s]+|[,;\\.\\s]+$", "");           // virgules/espaces fin
-
+        input = input.trim().toLowerCase().replaceAll("\\s+", " ");
+        input = input.replaceAll("\\(.*?\\)", "");
+        input = input.replaceAll("\\d+%?", "");
+        input = input.replaceAll("[*_]", "");
+        input = input.replaceAll("\\bfr\\b|\\bvoir\\b.*", "");
+        input = input.replaceAll("[^a-zàâäéèêëîïôöùûüç ,\\-']", "");
+        input = input.replaceAll("^[,;\\.\\s']+|[,;\\.\\s']+$", "");
         return input.trim();
     }
 
