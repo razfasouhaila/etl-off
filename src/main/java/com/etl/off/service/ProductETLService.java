@@ -20,6 +20,9 @@ public class ProductETLService {
     @Autowired private AllergenRepository allergenRepository;
 
     public void runETL(String csvPath) {
+        // Avant de lancer l'import, on nettoie les ingrédients existants
+        nettoyerIngredientsExistants();
+
         int lineCount = 0;
         int successCount = 0;
         int errorCount = 0;
@@ -173,4 +176,29 @@ public class ProductETLService {
         input = input.replaceAll("^[,;\\.\\s']+|[,;\\.\\s']+$", "");
         return input.trim();
     }
+
+
+    public void nettoyerIngredientsExistants() {
+        List<Ingredient> all = ingredientRepository.findAll();
+        int total = 0;
+        int supprimes = 0;
+
+        for (Ingredient ing : all) {
+            total++;
+            String nomNettoye = clean(ing.getNom());
+
+            boolean mauvais = nomNettoye.length() > 50 || nomNettoye.matches(".*\\d.*") || nomNettoye.isBlank();
+
+            if (mauvais) {
+                ingredientRepository.delete(ing);
+                supprimes++;
+            } else if (!nomNettoye.equals(ing.getNom())) {
+                ing.setNom(nomNettoye);
+                ingredientRepository.save(ing);
+            }
+        }
+
+        System.out.println("Nettoyage terminé : " + supprimes + " supprimés / " + total);
+    }
+
 }
