@@ -42,16 +42,16 @@ public class ProductETLService {
                 }
 
                 try {
-                    String nomProduit = get(columns, headerIndex, "nom");
-                    String nomMarque = get(columns, headerIndex, "marque");
-                    String nomCategorie = get(columns, headerIndex, "categorie");
+                    String nomProduit = clean(get(columns, headerIndex, "nom"));
+                    String nomMarque = clean(get(columns, headerIndex, "marque"));
+                    String nomCategorie = clean(get(columns, headerIndex, "categorie"));
 
                     if (nomProduit == null || nomProduit.isBlank()) throw new Exception("Nom produit vide");
                     if (nomMarque == null || nomMarque.isBlank()) throw new Exception("Marque vide");
                     if (nomCategorie == null || nomCategorie.isBlank()) throw new Exception("Catégorie vide");
 
                     Produit produit = new Produit();
-                    produit.setNom(nomProduit.trim());
+                    produit.setNom(nomProduit);
 
                     Categorie cat = categorieRepository.findByNom(nomCategorie).orElseGet(() -> {
                         Categorie c = new Categorie();
@@ -93,62 +93,6 @@ public class ProductETLService {
                     produit.setContientHuilePalme("1".equals(get(columns, headerIndex, "presenceHuilePalme")));
                     produit.setTexteIngredients(get(columns, headerIndex, "ingredients"));
 
-                    // INGREDIENTS
-                    String ingredientsStr = get(columns, headerIndex, "ingredients");
-                    if (ingredientsStr != null && !ingredientsStr.isBlank()) {
-                        String[] ingredients = ingredientsStr.split("[,;]");
-                        Set<Ingredient> ingredientSet = new HashSet<>();
-                        for (String ing : ingredients) {
-                            String nomIngredient = ing.trim().toLowerCase();
-                            if (!nomIngredient.isEmpty()) {
-                                Ingredient ingredient = ingredientRepository.findByNom(nomIngredient).orElseGet(() -> {
-                                    Ingredient newIng = new Ingredient();
-                                    newIng.setNom(nomIngredient);
-                                    return ingredientRepository.save(newIng);
-                                });
-                                ingredientSet.add(ingredient);
-                            }
-                        }
-                        produit.setIngredients(ingredientSet);
-                    }
-
-                    // ADDITIFS
-                    String additifsStr = get(columns, headerIndex, "additifs");
-                    if (additifsStr != null && !additifsStr.isBlank()) {
-                        String[] additifs = additifsStr.split(",");
-                        Set<Additif> additifSet = new HashSet<>();
-                        for (String a : additifs) {
-                            String nomAdditif = a.trim();
-                            if (!nomAdditif.isEmpty()) {
-                                Additif additif = additifRepository.findByNom(nomAdditif).orElseGet(() -> {
-                                    Additif newAdditif = new Additif();
-                                    newAdditif.setNom(nomAdditif);
-                                    return additifRepository.save(newAdditif);
-                                });
-                                additifSet.add(additif);
-                            }
-                        }
-                        produit.setAdditifs(additifSet);
-                    }
-
-                    // ALLERGENES
-                    String allergenesStr = get(columns, headerIndex, "allergenes");
-                    if (allergenesStr != null && !allergenesStr.isBlank()) {
-                        String[] allergenes = allergenesStr.split("[,;]");
-                        Set<Allergen> allergenSet = new HashSet<>();
-                        for (String a : allergenes) {
-                            String nomAllergen = a.trim().toLowerCase();
-                            if (!nomAllergen.isEmpty()) {
-                                Allergen allergen = allergenRepository.findByNom(nomAllergen).orElseGet(() -> {
-                                    Allergen newAllergen = new Allergen();
-                                    newAllergen.setNom(nomAllergen);
-                                    return allergenRepository.save(newAllergen);
-                                });
-                                allergenSet.add(allergen);
-                            }
-                        }
-                        produit.setAllergenes(allergenSet);
-                    }
 
                     produitRepository.save(produit);
                     successCount++;
@@ -180,4 +124,26 @@ public class ProductETLService {
             return null;
         }
     }
+
+    private String clean(String input) {
+        if (input == null) return "";
+
+        // Minuscule + suppression espaces en double
+        input = input.trim().toLowerCase().replaceAll("\\s+", " ");
+
+        // Supprimer tout ce qui ressemble à un pourcentage, un chiffre seul ou un code inutile
+        input = input.replaceAll("\\b\\d+\\b", "");              // chiffres isolés
+        input = input.replaceAll("\\d+%?", "");                  // nombres avec %
+        input = input.replaceAll("\\bfr\\b|\\bvoir\\b.*", "");   // 'fr', 'voir ...'
+
+        // Nettoyer les caractères spéciaux (hors ponctuation utile)
+        input = input.replaceAll("[^a-zàâäéèêëîïôöùûüç ,\\-']", "");
+
+        // Supprimer les virgules et points de fin
+        input = input.replaceAll("^[,;\\s]+|[,;\\.\\s]+$", "");
+
+        return input.trim();
+    }
+
+
 }
