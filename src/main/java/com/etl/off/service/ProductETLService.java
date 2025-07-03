@@ -93,6 +93,43 @@ public class ProductETLService {
                     produit.setContientHuilePalme("1".equals(get(columns, headerIndex, "presenceHuilePalme")));
                     produit.setTexteIngredients(get(columns, headerIndex, "ingredients"));
 
+                    // Traitement des allergènes avec nettoyage
+                    String allergenesStr = get(columns, headerIndex, "allergenes");
+                    if (allergenesStr != null && !allergenesStr.isBlank()) {
+                        String[] allergenes = allergenesStr.split("[,;\\-]");
+                        Set<Allergen> allergenSet = new HashSet<>();
+                        for (String a : allergenes) {
+                            String nomAllergen = clean(a);
+                            if (!nomAllergen.isEmpty()) {
+                                Allergen allergen = allergenRepository.findByNom(nomAllergen).orElseGet(() -> {
+                                    Allergen newAllergen = new Allergen();
+                                    newAllergen.setNom(nomAllergen);
+                                    return allergenRepository.save(newAllergen);
+                                });
+                                allergenSet.add(allergen);
+                            }
+                        }
+                        produit.setAllergenes(allergenSet);
+                    }
+
+                    // Nettoyage et insertion des additifs
+                    String additifsStr = get(columns, headerIndex, "additifs");
+                    if (additifsStr != null && !additifsStr.isBlank()) {
+                        String[] additifs = additifsStr.split("[,;\\-]");
+                        Set<Additif> additifsSet = new HashSet<>();
+                        for (String ad : additifs) {
+                            String nomAdditif = clean(ad);
+                            if (!nomAdditif.isEmpty() && nomAdditif.length() > 1) {
+                                Additif additif = additifRepository.findByNom(nomAdditif).orElseGet(() -> {
+                                    Additif newAdditif = new Additif();
+                                    newAdditif.setNom(nomAdditif);
+                                    return additifRepository.save(newAdditif);
+                                });
+                                additifsSet.add(additif);
+                            }
+                        }
+                        produit.setAdditifs(additifsSet);
+                    }
 
                     produitRepository.save(produit);
                     successCount++;
@@ -127,23 +164,13 @@ public class ProductETLService {
 
     private String clean(String input) {
         if (input == null) return "";
-
-        // Minuscule + suppression espaces en double
         input = input.trim().toLowerCase().replaceAll("\\s+", " ");
-
-        // Supprimer tout ce qui ressemble à un pourcentage, un chiffre seul ou un code inutile
-        input = input.replaceAll("\\b\\d+\\b", "");              // chiffres isolés
-        input = input.replaceAll("\\d+%?", "");                  // nombres avec %
-        input = input.replaceAll("\\bfr\\b|\\bvoir\\b.*", "");   // 'fr', 'voir ...'
-
-        // Nettoyer les caractères spéciaux (hors ponctuation utile)
+        input = input.replaceAll("\\(.*?\\)", "");
+        input = input.replaceAll("\\d+%?", "");
+        input = input.replaceAll("[*_]", "");
+        input = input.replaceAll("\\bfr\\b|\\bvoir\\b.*", "");
         input = input.replaceAll("[^a-zàâäéèêëîïôöùûüç ,\\-']", "");
-
-        // Supprimer les virgules et points de fin
-        input = input.replaceAll("^[,;\\s]+|[,;\\.\\s]+$", "");
-
+        input = input.replaceAll("^[,;\\.\\s']+|[,;\\.\\s']+$", "");
         return input.trim();
     }
-
-
 }
