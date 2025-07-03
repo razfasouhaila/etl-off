@@ -20,6 +20,9 @@ public class ProductETLService {
     @Autowired private AllergenRepository allergenRepository;
 
     public void runETL(String csvPath) {
+        // Avant de lancer l'import, on nettoie les ingrédients existants
+        nettoyerIngredientsExistants();
+
         int lineCount = 0;
         int successCount = 0;
         int errorCount = 0;
@@ -93,6 +96,25 @@ public class ProductETLService {
                     produit.setContientHuilePalme("1".equals(get(columns, headerIndex, "presenceHuilePalme")));
                     produit.setTexteIngredients(get(columns, headerIndex, "ingredients"));
 
+                    // INGREDIENTS
+                    String ingredientsStr = get(columns, headerIndex, "ingredients");
+                    if (ingredientsStr != null && !ingredientsStr.isBlank()) {
+                        String[] ingredients = ingredientsStr.split("[,;]");
+                        Set<Ingredient> ingredientSet = new HashSet<>();
+                        for (String ing : ingredients) {
+                            String nomIngredient = clean(ing);
+                            if (!nomIngredient.isEmpty()) {
+                                Ingredient ingredient = ingredientRepository.findByNom(nomIngredient).orElseGet(() -> {
+                                    Ingredient newIng = new Ingredient();
+                                    newIng.setNom(nomIngredient);
+                                    return ingredientRepository.save(newIng);
+                                });
+                                ingredientSet.add(ingredient);
+                            }
+                        }
+                        produit.setIngredients(ingredientSet);
+                    }
+
 
                     produitRepository.save(produit);
                     successCount++;
@@ -128,22 +150,39 @@ public class ProductETLService {
     private String clean(String input) {
         if (input == null) return "";
 
-        // Minuscule + suppression espaces en double
-        input = input.trim().toLowerCase().replaceAll("\\s+", " ");
-
-        // Supprimer tout ce qui ressemble à un pourcentage, un chiffre seul ou un code inutile
-        input = input.replaceAll("\\b\\d+\\b", "");              // chiffres isolés
-        input = input.replaceAll("\\d+%?", "");                  // nombres avec %
-        input = input.replaceAll("\\bfr\\b|\\bvoir\\b.*", "");   // 'fr', 'voir ...'
-
-        // Nettoyer les caractères spéciaux (hors ponctuation utile)
-        input = input.replaceAll("[^a-zàâäéèêëîïôöùûüç ,\\-']", "");
-
-        // Supprimer les virgules et points de fin
-        input = input.replaceAll("^[,;\\s]+|[,;\\.\\s]+$", "");
+        input = input.trim().toLowerCase().replaceAll("\\s+", " ");       // espaces et minuscule
+        input = input.replaceAll("\\(.*?\\)", "");                        // parenthèses
+        input = input.replaceAll("\\d+%?", "");                           // pourcentages et chiffres
+        input = input.replaceAll("[*_]", "");                             // caractères spéciaux
+        input = input.replaceAll("\\bfr\\b|\\bvoir\\b.*", "");            // mots parasites
+        input = input.replaceAll("[^a-zàâäéèêëîïôöùûüç ,\\-']", "");        // nettoyage global
+        input = input.replaceAll("^[,;\\s]+|[,;\\.\\s]+$", "");           // virgules/espaces fin
 
         return input.trim();
     }
 
+
+    public void nettoyerIngredientsExistants() {
+        List<Ingredient> all = ingredientRepository.findAll();
+        int total = 0;
+        int supprimes = 0;
+
+        for (Ingredient ing : all) {
+            total++;
+            String nomNettoye = clean(ing.getNom());
+
+            boolean mauvais = nomNettoye.length() > 50 || nomNettoye.matches(".*\\d.*") || nomNettoye.isBlank();
+
+            if (mauvais) {
+                ingredientRepository.delete(ing);
+                supprimes++;
+            } else if (!nomNettoye.equals(ing.getNom())) {
+                ing.setNom(nomNettoye);
+                ingredientRepository.save(ing);
+            }
+        }
+
+        System.out.println("Nettoyage terminé : " + supprimes + " supprimés / " + total);
+    }
 
 }
