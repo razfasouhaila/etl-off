@@ -183,17 +183,18 @@ if (ingredientsStr != null && !ingredientsStr.isBlank()) {
         }
     }
 
-    private String clean(String input) {
-        if (input == null) return "";
-        input = input.trim().toLowerCase().replaceAll("\\s+", " ");
-        input = input.replaceAll("\\(.*?\\)", "");
-        input = input.replaceAll("\\d+%?", "");
-        input = input.replaceAll("[*_]", "");
-        input = input.replaceAll("\\bfr\\b|\\bvoir\\b.*", "");
-        input = input.replaceAll("[^a-zàâäéèêëîïôöùûüç ,\\-']", "");
-        input = input.replaceAll("^[,;\\.\\s']+|[,;\\.\\s']+$", "");
-        return input.trim();
-    }
+   private String clean(String input) {
+    if (input == null) return "";
+
+    input = input.trim().toLowerCase().replaceAll("\\s+", " ");
+    input = input.replaceAll("\\(.*?\\)", "");             // supprime (xxx)
+    input = input.replaceAll("\\d+%+", "");                // supprime les pourcentages ex: 50%
+    input = input.replaceAll("[*_]", "");                  // supprime caractères parasites
+    input = input.replaceAll("\\bfr\\b|\\bvoir\\b.*", ""); // mots parasites
+    input = input.replaceAll("^[,;\\.\\s']+|[,;\\.\\s']+$", "");
+    return input.trim();
+}
+
 
 
     public void nettoyerIngredientsExistants() {
