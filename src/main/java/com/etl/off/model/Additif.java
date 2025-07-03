@@ -1,12 +1,14 @@
 package com.etl.off.model;
 
 import jakarta.persistence.*;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 @Data
 @NoArgsConstructor
 @Entity
+@AllArgsConstructor
+@Getter
+@Setter
 public class Additif {
 
     @Id

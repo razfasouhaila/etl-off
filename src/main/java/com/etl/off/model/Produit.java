@@ -2,10 +2,14 @@ package com.etl.off.model;
 
 import jakarta.persistence.*;
 import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
 
 import java.util.Set;
 
 @Data
+@NoArgsConstructor
+@AllArgsConstructor
 @Entity
 @Table(name = "produits")
 public class Produit {
@@ -15,7 +19,7 @@ public class Produit {
     private Long id;
 
     private String nom;
-    private String nutritionScore;  // nom aligné avec CSV et service
+    private String nutritionScore;
     private Double energie_100g;
     private Double graisse_100g;
     private Double sucre_100g;
@@ -52,25 +56,25 @@ public class Produit {
 
     @ManyToMany
     @JoinTable(
-        name = "produit_ingredients",
-        joinColumns = @JoinColumn(name = "produit_id"),
-        inverseJoinColumns = @JoinColumn(name = "ingredient_id")
+            name = "produit_ingredients",
+            joinColumns = @JoinColumn(name = "produit_id"),
+            inverseJoinColumns = @JoinColumn(name = "ingredient_id")
     )
     private Set<Ingredient> ingredients;
 
     @ManyToMany
     @JoinTable(
-        name = "produit_additifs",
-        joinColumns = @JoinColumn(name = "produit_id"),
-        inverseJoinColumns = @JoinColumn(name = "additif_id")
+            name = "produit_additifs",
+            joinColumns = @JoinColumn(name = "produit_id"),
+            inverseJoinColumns = @JoinColumn(name = "additif_id")
     )
     private Set<Additif> additifs;
 
     @ManyToMany
     @JoinTable(
-        name = "produit_allergenes",
-        joinColumns = @JoinColumn(name = "produit_id"),
-        inverseJoinColumns = @JoinColumn(name = "allergene_id")
+            name = "produit_allergenes",
+            joinColumns = @JoinColumn(name = "produit_id"),
+            inverseJoinColumns = @JoinColumn(name = "allergene_id")
     )
     private Set<Allergen> allergenes;
 }

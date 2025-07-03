@@ -1,12 +1,15 @@
 package com.etl.off.model;
 
 import jakarta.persistence.*;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 @Data
 @NoArgsConstructor
 @Entity
+@Getter
+@Setter
+@AllArgsConstructor
+@Table(name = "categories")
 public class Categorie {
 
     @Id
