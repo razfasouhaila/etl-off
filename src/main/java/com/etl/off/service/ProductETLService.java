@@ -105,15 +105,23 @@ public class ProductETLService {
         Produit produit = new Produit();
         produit.setNom(nomProduit);
 
-        Categorie cat = existingCategories.computeIfAbsent(nomCategorie.toLowerCase(), key -> {
-            Categorie c = new Categorie(nomCategorie);
-            return categorieRepository.save(c);
-        });
+        Categorie cat = existingCategories.get(nomCategorie.toLowerCase());
+        if (cat == null) {
+            cat = categorieRepository.findByNom(nomCategorie).orElseGet(() -> {
+                Categorie c = new Categorie(nomCategorie);
+                return categorieRepository.save(c);
+            });
+            existingCategories.put(nomCategorie.toLowerCase(), cat);
+        }
 
-        Marque marque = existingMarques.computeIfAbsent(nomMarque.toLowerCase(), key -> {
-            Marque m = new Marque(nomMarque);
-            return marqueRepository.save(m);
-        });
+        Marque marque = existingMarques.get(nomMarque.toLowerCase());
+        if (marque == null) {
+            marque = marqueRepository.findByNom(nomMarque).orElseGet(() -> {
+                Marque m = new Marque(nomMarque);
+                return marqueRepository.save(m);
+            });
+            existingMarques.put(nomMarque.toLowerCase(), marque);
+        }
 
         produit.setCategorie(cat);
         produit.setMarque(marque);
@@ -154,8 +162,10 @@ public class ProductETLService {
             if (!cleaned.isBlank()) {
                 Allergen a = existingAllergens.get(cleaned.toLowerCase());
                 if (a == null) {
-                    a = new Allergen(cleaned);
-                    a = allergenRepository.save(a);
+                    a = allergenRepository.findByNom(cleaned).orElseGet(() -> {
+                        Allergen newA = new Allergen(cleaned);
+                        return allergenRepository.save(newA);
+                    });
                     existingAllergens.put(cleaned.toLowerCase(), a);
                 }
                 set.add(a);
@@ -182,21 +192,24 @@ public class ProductETLService {
                 code = cleaned.toUpperCase();
                 nom = code;
             } else {
-                continue; // ignore malformés
+                continue; // ignoré
             }
 
             if (code == null || code.length() < 2) continue;
 
             Additif a = existingAdditifs.get(code.toLowerCase());
             if (a == null) {
-                try {
-                    a = new Additif(nom, code);
-                    a = additifRepository.save(a);
-                    existingAdditifs.put(code.toLowerCase(), a);
-                } catch (Exception e) {
-                    System.err.println("Additif ignoré : " + code + " - " + nom);
-                    continue;
+                a = additifRepository.findByNom(nom).orElse(null);
+                if (a == null) {
+                    try {
+                        a = new Additif(nom, code);
+                        a = additifRepository.save(a);
+                    } catch (Exception e) {
+                        System.err.println("Additif ignoré : " + code + " - " + nom);
+                        continue;
+                    }
                 }
+                existingAdditifs.put(code.toLowerCase(), a);
             }
             set.add(a);
         }
