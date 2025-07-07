@@ -134,45 +134,53 @@ public class ProductETLService {
         return produit;
     }
 
-    private Set<Ingredient> parseIngredients(String raw) {
-        Set<Ingredient> set = new HashSet<>();
-        if (raw == null) return set;
-        String[] parts = raw.split("[,;\\-]");
-        for (String part : parts) {
-            String cleaned = clean(part);
-            if (cleaned.length() > 1) {
-                Ingredient i = existingIngredients.get(cleaned.toLowerCase());
-                if (i == null) {
+private Set<Ingredient> parseIngredients(String raw) {
+    Set<Ingredient> set = new HashSet<>();
+    if (raw == null) return set;
+    String[] parts = raw.split("[,;\\-]");
+    for (String part : parts) {
+        String cleaned = clean(part);
+        if (cleaned.length() > 1) {
+            Ingredient i = existingIngredients.get(cleaned.toLowerCase());
+            if (i == null) {
+                try {
                     i = new Ingredient(cleaned);
-                    i = ingredientRepository.save(i);
+                    i = ingredientRepository.save(i);  // Gestion des erreurs lors de l'enregistrement
                     existingIngredients.put(cleaned.toLowerCase(), i);
+                } catch (Exception e) {
+                    System.err.println("Erreur lors de l'enregistrement de l'ingrédient : " + cleaned);
                 }
-                set.add(i);
             }
+            set.add(i);
         }
-        return set;
     }
+    return set;
+}
 
-    private Set<Allergen> parseAllergenes(String raw) {
-        Set<Allergen> set = new HashSet<>();
-        if (raw == null) return set;
-        String[] parts = raw.split("[,;\\-]");
-        for (String part : parts) {
-            String cleaned = clean(part);
-            if (!cleaned.isBlank()) {
-                Allergen a = existingAllergens.get(cleaned.toLowerCase());
-                if (a == null) {
+private Set<Allergen> parseAllergenes(String raw) {
+    Set<Allergen> set = new HashSet<>();
+    if (raw == null) return set;
+    String[] parts = raw.split("[,;\\-]");
+    for (String part : parts) {
+        String cleaned = clean(part);
+        if (!cleaned.isBlank()) {
+            Allergen a = existingAllergens.get(cleaned.toLowerCase());
+            if (a == null) {
+                try {
                     a = allergenRepository.findByNom(cleaned).orElseGet(() -> {
                         Allergen newA = new Allergen(cleaned);
                         return allergenRepository.save(newA);
                     });
                     existingAllergens.put(cleaned.toLowerCase(), a);
+                } catch (Exception e) {
+                    System.err.println("Erreur lors de l'enregistrement de l'allergène : " + cleaned);
                 }
-                set.add(a);
             }
+            set.add(a);
         }
-        return set;
     }
+    return set;
+}
 
     private Set<Additif> parseAdditifs(String raw) {
         Set<Additif> set = new HashSet<>();
@@ -257,33 +265,35 @@ public class ProductETLService {
     }
 
     private String clean(String input) {
-        if (input == null) return "";
-        input = input.trim().toLowerCase().replaceAll("\\s+", " ");
-        input = input.replaceAll("\\(.*?\\)", "");
-        input = input.replaceAll("\\d+%+", "");
-        input = input.replaceAll("[*_]", "");
-        input = input.replaceAll("\\bfr\\b|\\bvoir\\b.*", "");
-        input = input.replaceAll("^[,;\\.\\s']+|[,;\\.\\s']+$", "");
-        return input.trim();
-    }
+    if (input == null) return "";
+    input = input.trim().toLowerCase().replaceAll("\\s+", " ");
+    input = input.replaceAll("\\(.*?\\)", ""); // Supprime le contenu entre parenthèses
+    input = input.replaceAll("\\d+%+", "");  // Supprime les pourcentages
+    input = input.replaceAll("[*_]", "");   // Supprime les astérisques et underscores
+    input = input.replaceAll("\\bfr\\b|\\bvoir\\b.*", ""); // Supprime les mots "fr" ou "voir"
+    input = input.replaceAll("^[,;\\.\\s']+|[,;\\.\\s']+$", ""); // Supprime les caractères indésirables en début et fin de chaîne
+    input = input.replaceAll("[^a-zA-Z0-9\\s,;\\-]", "");  // Enlève les caractères non alphanumériques autres que , ; -
+    return input.trim();
+}
+
 
     public void nettoyerIngredientsExistants() {
-        List<Ingredient> all = ingredientRepository.findAll();
-        int supprimes = 0;
+    List<Ingredient> all = ingredientRepository.findAll();
+    int supprimes = 0;
 
-        for (Ingredient ing : all) {
-            String nomNettoye = clean(ing.getNom());
-            boolean mauvais = nomNettoye.length() > 50 || nomNettoye.matches(".*\\d.*") || nomNettoye.isBlank();
+    for (Ingredient ing : all) {
+        String nomNettoye = clean(ing.getNom());
+        boolean mauvais = nomNettoye.length() > 50 || nomNettoye.matches(".*\\d.*") || nomNettoye.isBlank();
 
-            if (mauvais) {
-                ingredientRepository.delete(ing);
-                supprimes++;
-            } else if (!nomNettoye.equals(ing.getNom())) {
-                ing.setNom(nomNettoye);
-                ingredientRepository.save(ing);
-            }
+        if (mauvais) {
+            ingredientRepository.delete(ing);
+            supprimes++;
+        } else if (!nomNettoye.equals(ing.getNom())) {
+            ing.setNom(nomNettoye);
+            ingredientRepository.save(ing);
         }
-
-        System.out.println("Nettoyage terminé : " + supprimes + " supprimés");
     }
+
+    System.out.println("Nettoyage terminé : " + supprimes + " supprimés");
+}
 }
