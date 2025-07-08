@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class ProductETLService {
@@ -19,97 +20,235 @@ public class ProductETLService {
     @Autowired private AdditifRepository additifRepository;
     @Autowired private AllergenRepository allergenRepository;
 
+    private Map<String, Ingredient> existingIngredients;
+    private Map<String, Additif> existingAdditifs;
+    private Map<String, Allergen> existingAllergens;
+    private Map<String, Marque> existingMarques;
+    private Map<String, Categorie> existingCategories;
+
     public void runETL(String csvPath) {
-        int lineCount = 0;
-        int successCount = 0;
-        int errorCount = 0;
+        nettoyerIngredientsExistants();
+        preloadCaches();
+
+        int lineCount = 0, successCount = 0, errorCount = 0;
+        int batchSize = 500;
+        List<Produit> produitsBatch = new ArrayList<>();
+        long startTime = System.currentTimeMillis();
 
         try (BufferedReader reader = new BufferedReader(new FileReader(csvPath))) {
-            String line;
             String[] headers = reader.readLine().split("\\|", -1);
             Map<String, Integer> headerIndex = new HashMap<>();
             for (int i = 0; i < headers.length; i++) {
                 headerIndex.put(headers[i].trim(), i);
             }
 
+            String line;
             while ((line = reader.readLine()) != null) {
                 lineCount++;
-                String[] columns = line.split("\\|", -1);
-                if (columns.length < headers.length) {
-                    System.err.println(" Ligne " + lineCount + " ignorée (colonnes incomplètes)");
-                    errorCount++;
-                    continue;
-                }
-
                 try {
-                    String nomProduit = clean(get(columns, headerIndex, "nom"));
-                    String nomMarque = clean(get(columns, headerIndex, "marque"));
-                    String nomCategorie = clean(get(columns, headerIndex, "categorie"));
+                    String[] columns = line.split("\\|", -1);
+                    if (columns.length < headers.length) {
+                        errorCount++;
+                        continue;
+                    }
 
-                    if (nomProduit == null || nomProduit.isBlank()) throw new Exception("Nom produit vide");
-                    if (nomMarque == null || nomMarque.isBlank()) throw new Exception("Marque vide");
-                    if (nomCategorie == null || nomCategorie.isBlank()) throw new Exception("Catégorie vide");
-
-                    Produit produit = new Produit();
-                    produit.setNom(nomProduit);
-
-                    Categorie cat = categorieRepository.findByNom(nomCategorie).orElseGet(() -> {
-                        Categorie c = new Categorie();
-                        c.setNom(nomCategorie);
-                        return categorieRepository.save(c);
-                    });
-
-                    Marque marque = marqueRepository.findByNom(nomMarque).orElseGet(() -> {
-                        Marque m = new Marque();
-                        m.setNom(nomMarque);
-                        return marqueRepository.save(m);
-                    });
-
-                    produit.setCategorie(cat);
-                    produit.setMarque(marque);
-
-                    produit.setNutritionScore(get(columns, headerIndex, "nutritionGradeFr"));
-                    produit.setEnergie_100g(parseDouble(get(columns, headerIndex, "energie100g")));
-                    produit.setGraisse_100g(parseDouble(get(columns, headerIndex, "graisse100g")));
-                    produit.setSucre_100g(parseDouble(get(columns, headerIndex, "sucres100g")));
-                    produit.setFibres_100g(parseDouble(get(columns, headerIndex, "fibres100g")));
-                    produit.setProteines_100g(parseDouble(get(columns, headerIndex, "proteines100g")));
-                    produit.setSel_100g(parseDouble(get(columns, headerIndex, "sel100g")));
-                    produit.setVitA_100g(parseDouble(get(columns, headerIndex, "vitA100g")));
-                    produit.setVitD_100g(parseDouble(get(columns, headerIndex, "vitD100g")));
-                    produit.setVitE_100g(parseDouble(get(columns, headerIndex, "vitE100g")));
-                    produit.setVitK_100g(parseDouble(get(columns, headerIndex, "vitK100g")));
-                    produit.setVitC_100g(parseDouble(get(columns, headerIndex, "vitC100g")));
-                    produit.setVitB1_100g(parseDouble(get(columns, headerIndex, "vitB1100g")));
-                    produit.setVitB2_100g(parseDouble(get(columns, headerIndex, "vitB2100g")));
-                    produit.setVitPP_100g(parseDouble(get(columns, headerIndex, "vitPP100g")));
-                    produit.setVitB6_100g(parseDouble(get(columns, headerIndex, "vitB6100g")));
-                    produit.setVitB9_100g(parseDouble(get(columns, headerIndex, "vitB9100g")));
-                    produit.setVitB12_100g(parseDouble(get(columns, headerIndex, "vitB12100g")));
-                    produit.setCalcium_100g(parseDouble(get(columns, headerIndex, "calcium100g")));
-                    produit.setMagnesium_100g(parseDouble(get(columns, headerIndex, "magnesium100g")));
-                    produit.setFer_100g(parseDouble(get(columns, headerIndex, "fer100g")));
-                    produit.setBetaCarotene_100g(parseDouble(get(columns, headerIndex, "betaCarotene100g")));
-                    produit.setContientHuilePalme("1".equals(get(columns, headerIndex, "presenceHuilePalme")));
-                    produit.setTexteIngredients(get(columns, headerIndex, "ingredients"));
-
-
-                    produitRepository.save(produit);
+                    Produit produit = processLine(columns, headerIndex);
+                    produitsBatch.add(produit);
                     successCount++;
+
+                    if (produitsBatch.size() >= batchSize) {
+                        produitRepository.saveAll(produitsBatch);
+                        produitsBatch.clear();
+                    }
                 } catch (Exception e) {
-                    System.err.println(" Erreur ligne " + lineCount + ": " + e.getMessage());
                     errorCount++;
                 }
             }
 
+            if (!produitsBatch.isEmpty()) {
+                produitRepository.saveAll(produitsBatch);
+            }
+
         } catch (Exception e) {
-            System.err.println(" Erreur d'ouverture du fichier CSV : " + e.getMessage());
+            System.err.println("Erreur lecture fichier : " + e.getMessage());
         }
 
-        System.out.println("\n Résumé :");
-        System.out.println("Lignes totales traitées : " + lineCount);
-        System.out.println(" Insérées avec succès : " + successCount);
-        System.out.println(" Ignorées en erreur : " + errorCount);
+        System.out.println("--- Résumé ---");
+        System.out.println("Lignes traitées : " + lineCount);
+        System.out.println("Succès : " + successCount);
+        System.out.println("Erreurs : " + errorCount);
+        System.out.println("Durée totale : " + (System.currentTimeMillis() - startTime) / 1000.0 + " s");
+    }
+
+    private void preloadCaches() {
+        existingIngredients = ingredientRepository.findAll().stream()
+                .collect(Collectors.toMap(i -> i.getNom().toLowerCase(), i -> i));
+        existingAdditifs = additifRepository.findAll().stream()
+                .collect(Collectors.toMap(a -> a.getCode().toLowerCase(), a -> a));
+        existingAllergens = allergenRepository.findAll().stream()
+                .collect(Collectors.toMap(a -> a.getNom().toLowerCase(), a -> a));
+        existingMarques = marqueRepository.findAll().stream()
+                .collect(Collectors.toMap(m -> m.getNom().toLowerCase(), m -> m));
+        existingCategories = categorieRepository.findAll().stream()
+                .collect(Collectors.toMap(c -> c.getNom().toLowerCase(), c -> c));
+    }
+
+    private Produit processLine(String[] columns, Map<String, Integer> headerIndex) throws Exception {
+        String nomProduit = clean(get(columns, headerIndex, "nom"));
+        String nomMarque = clean(get(columns, headerIndex, "marque"));
+        String nomCategorie = clean(get(columns, headerIndex, "categorie"));
+
+        if (nomProduit == null || nomProduit.isBlank()) throw new Exception("Nom produit vide");
+        if (nomMarque == null || nomMarque.isBlank()) throw new Exception("Marque vide");
+        if (nomCategorie == null || nomCategorie.isBlank()) throw new Exception("Catégorie vide");
+
+        Produit produit = new Produit();
+        produit.setNom(nomProduit);
+
+        Categorie cat = existingCategories.get(nomCategorie.toLowerCase());
+        if (cat == null) {
+            cat = categorieRepository.findByNom(nomCategorie).orElseGet(() -> {
+                Categorie c = new Categorie(nomCategorie);
+                return categorieRepository.save(c);
+            });
+            existingCategories.put(nomCategorie.toLowerCase(), cat);
+        }
+
+        Marque marque = existingMarques.get(nomMarque.toLowerCase());
+        if (marque == null) {
+            marque = marqueRepository.findByNom(nomMarque).orElseGet(() -> {
+                Marque m = new Marque(nomMarque);
+                return marqueRepository.save(m);
+            });
+            existingMarques.put(nomMarque.toLowerCase(), marque);
+        }
+
+        produit.setCategorie(cat);
+        produit.setMarque(marque);
+        produit.setIngredients(parseIngredients(get(columns, headerIndex, "ingredients")));
+        produit.setAdditifs(parseAdditifs(get(columns, headerIndex, "additifs")));
+        produit.setAllergenes(parseAllergenes(get(columns, headerIndex, "allergenes")));
+        produit.setTexteIngredients(get(columns, headerIndex, "ingredients"));
+
+        setNutritionValues(produit, columns, headerIndex);
+        return produit;
+    }
+
+private Set<Ingredient> parseIngredients(String raw) {
+    Set<Ingredient> set = new HashSet<>();
+    if (raw == null) return set;
+    String[] parts = raw.split("[,;\\-]");
+    for (String part : parts) {
+        String cleaned = clean(part);
+        if (cleaned.length() > 1) {
+            Ingredient i = existingIngredients.get(cleaned.toLowerCase());
+            if (i == null) {
+                try {
+                    i = new Ingredient(cleaned);
+                    i = ingredientRepository.save(i);  // Gestion des erreurs lors de l'enregistrement
+                    existingIngredients.put(cleaned.toLowerCase(), i);
+                } catch (Exception e) {
+                    System.err.println("Erreur lors de l'enregistrement de l'ingrédient : " + cleaned);
+                }
+            }
+            set.add(i);
+        }
+    }
+    return set;
+}
+
+private Set<Allergen> parseAllergenes(String raw) {
+    Set<Allergen> set = new HashSet<>();
+    if (raw == null) return set;
+    String[] parts = raw.split("[,;\\-]");
+    for (String part : parts) {
+        String cleaned = clean(part);
+        if (!cleaned.isBlank()) {
+            Allergen a = existingAllergens.get(cleaned.toLowerCase());
+            if (a == null) {
+                try {
+                    a = allergenRepository.findByNom(cleaned).orElseGet(() -> {
+                        Allergen newA = new Allergen(cleaned);
+                        return allergenRepository.save(newA);
+                    });
+                    existingAllergens.put(cleaned.toLowerCase(), a);
+                } catch (Exception e) {
+                    System.err.println("Erreur lors de l'enregistrement de l'allergène : " + cleaned);
+                }
+            }
+            set.add(a);
+        }
+    }
+    return set;
+}
+
+    private Set<Additif> parseAdditifs(String raw) {
+        Set<Additif> set = new HashSet<>();
+        if (raw == null || raw.isBlank()) return set;
+
+        String[] parts = raw.split(",");
+        for (String part : parts) {
+            String cleaned = clean(part);
+            if (cleaned.length() <= 1) continue;
+
+            String code = null, nom = null;
+            if (cleaned.matches("e\\d+[a-z]*\\s*-\\s*.*")) {
+                String[] tokens = cleaned.split("\\s*-\\s*", 2);
+                code = tokens[0].toUpperCase();
+                nom = tokens.length > 1 ? tokens[1].trim() : code;
+            } else if (cleaned.matches("e\\d+[a-z]*")) {
+                code = cleaned.toUpperCase();
+                nom = code;
+            } else {
+                continue; // ignoré
+            }
+
+            if (code == null || code.length() < 2) continue;
+
+            Additif a = existingAdditifs.get(code.toLowerCase());
+            if (a == null) {
+                a = additifRepository.findByNom(nom).orElse(null);
+                if (a == null) {
+                    try {
+                        a = new Additif(nom, code);
+                        a = additifRepository.save(a);
+                    } catch (Exception e) {
+                        System.err.println("Additif ignoré : " + code + " - " + nom);
+                        continue;
+                    }
+                }
+                existingAdditifs.put(code.toLowerCase(), a);
+            }
+            set.add(a);
+        }
+
+        return set;
+    }
+
+    private void setNutritionValues(Produit produit, String[] columns, Map<String, Integer> headerIndex) {
+        produit.setNutritionScore(get(columns, headerIndex, "nutritionGradeFr"));
+        produit.setEnergie_100g(parseDouble(get(columns, headerIndex, "energie100g")));
+        produit.setGraisse_100g(parseDouble(get(columns, headerIndex, "graisse100g")));
+        produit.setSucre_100g(parseDouble(get(columns, headerIndex, "sucres100g")));
+        produit.setFibres_100g(parseDouble(get(columns, headerIndex, "fibres100g")));
+        produit.setProteines_100g(parseDouble(get(columns, headerIndex, "proteines100g")));
+        produit.setSel_100g(parseDouble(get(columns, headerIndex, "sel100g")));
+        produit.setVitA_100g(parseDouble(get(columns, headerIndex, "vitA100g")));
+        produit.setVitD_100g(parseDouble(get(columns, headerIndex, "vitD100g")));
+        produit.setVitE_100g(parseDouble(get(columns, headerIndex, "vitE100g")));
+        produit.setVitK_100g(parseDouble(get(columns, headerIndex, "vitK100g")));
+        produit.setVitC_100g(parseDouble(get(columns, headerIndex, "vitC100g")));
+        produit.setVitB1_100g(parseDouble(get(columns, headerIndex, "vitB1100g")));
+        produit.setVitB2_100g(parseDouble(get(columns, headerIndex, "vitB2100g")));
+        produit.setVitPP_100g(parseDouble(get(columns, headerIndex, "vitPP100g")));
+        produit.setVitB6_100g(parseDouble(get(columns, headerIndex, "vitB6100g")));
+        produit.setVitB9_100g(parseDouble(get(columns, headerIndex, "vitB9100g")));
+        produit.setVitB12_100g(parseDouble(get(columns, headerIndex, "vitB12100g")));
+        produit.setCalcium_100g(parseDouble(get(columns, headerIndex, "calcium100g")));
+        produit.setMagnesium_100g(parseDouble(get(columns, headerIndex, "magnesium100g")));
+        produit.setFer_100g(parseDouble(get(columns, headerIndex, "fer100g")));
+        produit.setBetaCarotene_100g(parseDouble(get(columns, headerIndex, "betaCarotene100g")));
+        produit.setContientHuilePalme("1".equals(get(columns, headerIndex, "presenceHuilePalme")));
     }
 
     private String get(String[] columns, Map<String, Integer> map, String key) {
@@ -126,24 +265,35 @@ public class ProductETLService {
     }
 
     private String clean(String input) {
-        if (input == null) return "";
+    if (input == null) return "";
+    input = input.trim().toLowerCase().replaceAll("\\s+", " ");
+    input = input.replaceAll("\\(.*?\\)", ""); // Supprime le contenu entre parenthèses
+    input = input.replaceAll("\\d+%+", "");  // Supprime les pourcentages
+    input = input.replaceAll("[*_]", "");   // Supprime les astérisques et underscores
+    input = input.replaceAll("\\bfr\\b|\\bvoir\\b.*", ""); // Supprime les mots "fr" ou "voir"
+    input = input.replaceAll("^[,;\\.\\s']+|[,;\\.\\s']+$", ""); // Supprime les caractères indésirables en début et fin de chaîne
+    input = input.replaceAll("[^a-zA-Z0-9\\s,;\\-]", "");  // Enlève les caractères non alphanumériques autres que , ; -
+    return input.trim();
+}
 
-        // Minuscule + suppression espaces en double
-        input = input.trim().toLowerCase().replaceAll("\\s+", " ");
 
-        // Supprimer tout ce qui ressemble à un pourcentage, un chiffre seul ou un code inutile
-        input = input.replaceAll("\\b\\d+\\b", "");              // chiffres isolés
-        input = input.replaceAll("\\d+%?", "");                  // nombres avec %
-        input = input.replaceAll("\\bfr\\b|\\bvoir\\b.*", "");   // 'fr', 'voir ...'
+    public void nettoyerIngredientsExistants() {
+    List<Ingredient> all = ingredientRepository.findAll();
+    int supprimes = 0;
 
-        // Nettoyer les caractères spéciaux (hors ponctuation utile)
-        input = input.replaceAll("[^a-zàâäéèêëîïôöùûüç ,\\-']", "");
+    for (Ingredient ing : all) {
+        String nomNettoye = clean(ing.getNom());
+        boolean mauvais = nomNettoye.length() > 50 || nomNettoye.matches(".*\\d.*") || nomNettoye.isBlank();
 
-        // Supprimer les virgules et points de fin
-        input = input.replaceAll("^[,;\\s]+|[,;\\.\\s]+$", "");
-
-        return input.trim();
+        if (mauvais) {
+            ingredientRepository.delete(ing);
+            supprimes++;
+        } else if (!nomNettoye.equals(ing.getNom())) {
+            ing.setNom(nomNettoye);
+            ingredientRepository.save(ing);
+        }
     }
 
-
+    System.out.println("Nettoyage terminé : " + supprimes + " supprimés");
+}
 }
