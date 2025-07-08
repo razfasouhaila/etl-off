@@ -5,20 +5,22 @@ import lombok.*;
 
 @Data
 @NoArgsConstructor
-@Entity
 @AllArgsConstructor
-@Getter
-@Setter
+@Entity
 public class Additif {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(unique = true, nullable = false)
+    @Column(nullable = false)
     private String nom;
 
-    public Additif(String nom) {
+    @Column(nullable = false, unique = true)
+    private String code;
+
+    public Additif(String nom, String code) {
         this.nom = nom;
+        this.code = code;
     }
 }
